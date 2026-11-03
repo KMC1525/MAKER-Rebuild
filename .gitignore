@@ -11,3 +11,5 @@ __pycache__/
 .DS_Store
 demo-mv/
 node_modules/
+/dist-exe/
+/build-exe/

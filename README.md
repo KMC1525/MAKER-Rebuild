@@ -10,7 +10,7 @@
 ![license](https://img.shields.io/badge/licen%C3%A7a-MIT-green)
 ![status](https://img.shields.io/badge/status-alpha-orange)
 
-[English](README.en.md) · **Português**
+[English](README.en.md) · **Português** · [Changelog](CHANGELOG.md)
 
 </div>
 
@@ -44,25 +44,67 @@ informação crítica.
 
 ## Instalação
 
-Requisitos: **Python 3.9+**. Nenhuma dependência de Python (só biblioteca padrão).
-Opcionais: `node` (valida a sintaxe dos JS gerados), `ffmpeg` (converte áudio WMA/MIDI).
+Escolha a que combina com você. Todas instalam o comando `maker-rebuild`.
+
+### 1) Executável autônomo (não precisa de Python) — Windows · macOS · Linux
+
+**Linux e macOS** (`sh`):
 
 ```bash
-git clone https://github.com/kmc1525/MAKER-Rebuild.git
-cd MAKER-Rebuild
-pip install -e .
+curl -fsSL https://raw.githubusercontent.com/KMC1525/MAKER-Rebuild/main/install.sh | sh
 ```
 
-Ou direto do GitHub, isolado:
+**Windows** (PowerShell):
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/KMC1525/MAKER-Rebuild/main/install.ps1))) -Mode auto
+```
+
+Ou, com o repositório clonado, dê dois cliques em `install.bat` (ou rode `install.bat --exe`).
+
+O instalador baixa o executável da [última release](https://github.com/KMC1525/MAKER-Rebuild/releases/latest) para a sua plataforma
+(`linux`/`macos`/`windows` × `x86_64`/`arm64`), **confere o checksum SHA-256**, coloca em `~/.local/bin` (Windows: `%LOCALAPPDATA%\MAKER-Rebuild\bin`,
+já no seu `PATH`) e avisa se algo faltar. Se ainda não houver release, ele cai sozinho para o modo Python (item 2).
+Você também pode baixar o pacote manualmente na página de releases.
+
+| opção (`sh` / PowerShell) | efeito |
+|---|---|
+| `--exe` / `-Mode exe` · `--python` / `-Mode python` | força o executável ou o ambiente Python |
+| `--prefix DIR` / `-Prefix DIR` | onde instalar (padrão `~/.local` · `%LOCALAPPDATA%\MAKER-Rebuild`) |
+| `--version X.Y.Z` / `-Version X.Y.Z` | versão específica da release |
+| `--dry-run` / `-DryRun` | mostra o que faria, sem alterar nada |
+| `--uninstall` / `-Uninstall` | remove (configuração e cache do usuário são mantidos) |
+
+> **Aviso de segurança do sistema:** os executáveis ainda **não são assinados digitalmente**. No Windows o SmartScreen pode avisar
+> ("editor desconhecido" → *Mais informações* → *Executar assim mesmo*); no macOS o instalador remove a quarentena, e se baixar o pacote
+> à mão use `xattr -d com.apple.quarantine maker-rebuild`. Se preferir não confiar em binários, use o item 2 ou 3 e leia o código.
+
+### 2) Instalador via Python (ambiente virtual isolado)
+
+Requer **Python 3.9+**; nenhuma dependência de Python (só biblioteca padrão).
 
 ```bash
-pipx install git+https://github.com/kmc1525/MAKER-Rebuild.git
+git clone https://github.com/KMC1525/MAKER-Rebuild.git && cd MAKER-Rebuild
+sh install.sh --python        # Windows: install.bat --python
 ```
 
-Confira o ambiente:
+### 3) `pip` / `pipx`
+
+```bash
+pip install -e .              # a partir do clone
+pipx install git+https://github.com/KMC1525/MAKER-Rebuild.git
+```
+
+Opcionais para qualquer forma: `node` (valida a sintaxe dos JS gerados) e `ffmpeg` (converte áudio WMA/MIDI). Confira o ambiente:
 
 ```bash
 maker-rebuild doctor
+```
+
+### Gerar o seu próprio executável
+
+```bash
+pip install -e ".[exe]" && python packaging/build_exe.py     # → dist-exe/maker-rebuild-<so>-<arch>.(tar.gz|zip) + .sha256
 ```
 
 ## Começando em 1 minuto (sem ter um jogo)
@@ -288,6 +330,10 @@ python -m pytest -q          # 90+ testes: leitores, builder, patches, traduçã
 - [ ] Fidelidade total de VX/XP (autotiles, banco de dados) e leitor LCF completo (2000/2003: eventos e banco)
 - [ ] Geração de arte/áudio por modelos locais (Stable Diffusion/ComfyUI) para os *placeholders*
 - [ ] Modo *watch* + recarga rápida; empacotadores para desktop/mobile (Tauri/Capacitor)
+
+## Changelog
+
+Todas as mudanças ficam registradas em [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Licença
 

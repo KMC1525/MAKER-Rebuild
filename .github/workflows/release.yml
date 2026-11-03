@@ -1,0 +1,59 @@
+name: Release
+
+# Publica executáveis (Linux, macOS Intel/ARM, Windows) quando uma tag vX.Y.Z é enviada:
+#   git tag v0.2.0 && git push origin v0.2.0
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: exe ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux-x86_64, os: ubuntu-22.04 }          # glibc mais antiga = binário mais compatível
+          - { name: macos-arm64,  os: macos-14 }
+          - { name: macos-x86_64, os: macos-15-intel }
+          - { name: windows-x86_64, os: windows-latest }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: python -m pip install --upgrade pip pyinstaller
+      - name: Compilar + smoke test do binário
+        run: python packaging/build_exe.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exe-${{ matrix.name }}
+          path: dist-exe/maker-rebuild-*
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+          pattern: exe-*
+          merge-multiple: true
+      - name: Notas da release (seção do CHANGELOG.md)
+        run: python packaging/changelog_section.py "${GITHUB_REF_NAME}" > notes.md
+      - uses: softprops/action-gh-release@v2
+        with:
+          body_path: notes.md
+          files: assets/*
+          fail_on_unmatched_files: true

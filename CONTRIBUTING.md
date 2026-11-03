@@ -21,6 +21,7 @@ python -m pytest -q tests/test_runtime.py   # jogabilidade em Chromium (precisa 
 | idioma da UI própria do runtime | `src/maker_rebuild/build/i18n.py` (um dicionário por idioma) |
 | novo provedor de IA | `src/maker_rebuild/providers/` (herde de `Provider`, registre em `__init__.py` e `config.PROVIDERS`) |
 | novo passo da DSL de eventos | `src/maker_rebuild/ai/eventdsl.py` (`s_<nome>`) + tabela em `prompts/runtime_api.md` |
+| instaladores / executável / release | `install.sh`, `install.ps1`, `install.bat`, `packaging/`, `.github/workflows/release.yml` |
 | melhorar leitura de uma engine | `src/maker_rebuild/project.py`, `engines/` |
 
 ## Regras
@@ -35,3 +36,12 @@ python -m pytest -q tests/test_runtime.py   # jogabilidade em Chromium (precisa 
 ## Reportando problemas de um jogo real
 
 Cole a saída de `maker-rebuild analyze <jogo> --json` e a lista de avisos do `validate`. **Não** anexe assets/projetos protegidos por direitos autorais.
+
+## Publicando uma release
+
+1. Atualize a versão nos **três** lugares (um teste confere): `pyproject.toml`, `src/maker_rebuild/__init__.py`, `MR.version` em `runtime/js/mr-core.js`.
+2. Mova o conteúdo de `## [Não lançado]` do `CHANGELOG.md` para uma nova seção `## [X.Y.Z] - AAAA-MM-DD` (Adicionado / Alterado / Corrigido / Removido / Segurança / Limitações) e atualize os links no rodapé.
+   Toda PR que muda comportamento deve acrescentar uma linha em **Não lançado**.
+3. `python -m pytest -q` e, localmente, `pip install -e ".[exe]" && python packaging/build_exe.py` (compila e testa o binário do seu sistema).
+4. `git tag vX.Y.Z && git push origin vX.Y.Z` — o workflow **Release** compila os executáveis (Linux, macOS Intel/ARM, Windows), publica-os com `.sha256`
+   e usa a seção do changelog como notas. Os instaladores (`install.sh`/`install.ps1`) passam a baixar essa release.
