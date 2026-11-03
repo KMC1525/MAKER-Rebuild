@@ -42,3 +42,56 @@ jobs:
         run: python -m pytest -q tests/test_runtime.py
         env:
           NODE_PATH: /usr/local/lib/node_modules
+
+  installers:
+    name: instalador (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: install.sh --from-local (Linux/macOS)
+        if: runner.os != 'Windows'
+        shell: sh
+        run: |
+          sh install.sh --from-local --prefix "$RUNNER_TEMP/mr"
+          "$RUNNER_TEMP/mr/bin/maker-rebuild" demo "$RUNNER_TEMP/demo"
+          "$RUNNER_TEMP/mr/bin/maker-rebuild" recompile "$RUNNER_TEMP/demo" -o "$RUNNER_TEMP/out" -y
+          sh install.sh --uninstall --prefix "$RUNNER_TEMP/mr"
+      - name: install.ps1 -FromLocal (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          ./install.ps1 -Mode python -FromLocal -Prefix "$env:RUNNER_TEMP\mr" -NoPath
+          & "$env:RUNNER_TEMP\mr\bin\maker-rebuild.cmd" --version
+          & "$env:RUNNER_TEMP\mr\bin\maker-rebuild.cmd" demo "$env:RUNNER_TEMP\demo"
+          & "$env:RUNNER_TEMP\mr\bin\maker-rebuild.cmd" recompile "$env:RUNNER_TEMP\demo" -o "$env:RUNNER_TEMP\out" -y
+          ./install.ps1 -Uninstall -Prefix "$env:RUNNER_TEMP\mr" -NoPath
+      - name: install.bat --dry-run (Windows)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: install.bat --dry-run --prefix "%RUNNER_TEMP%\mr2"
+
+  exe:
+    name: executável (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: python -m pip install --upgrade pip pyinstaller
+      - name: PyInstaller + smoke test do binário
+        run: python packaging/build_exe.py

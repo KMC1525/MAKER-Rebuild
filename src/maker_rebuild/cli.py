@@ -342,7 +342,9 @@ def cmd_doctor(args: Any) -> int:
     from .providers import make_provider
     ui.heading("Ambiente")
     ok = True
-    ui.kv([("Python", platform.python_version()), ("Sistema", platform.platform())])
+    frozen = bool(getattr(sys, "frozen", False))
+    ui.kv([("MAKER-Rebuild", f"{__version__} ({'executável autônomo' if frozen else 'pacote Python'})"),
+           ("Python", platform.python_version() + (" (embutido)" if frozen else "")), ("Sistema", platform.platform())])
     for tool, why in (("node", "valida a sintaxe dos JS gerados (opcional)"), ("ffmpeg", "converte áudio WMA/MIDI (opcional)"),
                       ("fluidsynth", "MIDI → OGG com soundfont (opcional)")):
         path = shutil.which(tool)
