@@ -6,7 +6,7 @@
   'use strict';
 
   const MR = global.MR = global.MR || {};
-  MR.version = '0.2.0';
+  MR.version = '0.3.0';
   MR.data = MR.data || {};
   MR.data.maps = MR.data.maps || {};
   MR.config = MR.config || {};

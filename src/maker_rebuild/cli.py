@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, List, Optional
 
 from . import __version__, ui
+from .dropin import clean_path, path_arg
 from .config import ALIASES, PROVIDERS, Config, config_dir, load_config, save_config
 
 EXAMPLES = """\
@@ -46,7 +47,7 @@ def add_common(p: argparse.ArgumentParser, out: bool = True) -> None:
     if out:
         p.add_argument("-o", "--out", default="dist", help="pasta de saída (padrão: dist)")
         p.add_argument("-n", "--name", help="nome da pasta/zip do jogo (padrão: título)")
-    p.add_argument("--docs", nargs="*", default=[], metavar="ARQ", help="documentos do autor (GDD, roteiro, fichas) .txt/.md/.csv/.json")
+    p.add_argument("--docs", nargs="*", default=[], type=path_arg, metavar="ARQ", help="documentos do autor (GDD, roteiro, fichas) .txt/.md/.csv/.json")
     p.add_argument("-y", "--yes", action="store_true", help="não perguntar nada (usa padrões razoáveis)")
     p.add_argument("--no-color", action="store_true")
     p.add_argument("--skip-syntax-check", action="store_true", help="não rodar node --check nos JS")
@@ -60,12 +61,12 @@ def build_parser() -> argparse.ArgumentParser:
     sub = ap.add_subparsers(dest="cmd")
 
     p = sub.add_parser("analyze", help="mapeia o projeto: engine, mapas, eventos, assets, plugins, riscos")
-    p.add_argument("path")
+    p.add_argument("path", nargs="?", type=path_arg, help="pasta ou .zip do jogo (ou arraste-o para a janela quando o terminal perguntar)")
     p.add_argument("--json", action="store_true")
     p.add_argument("--no-color", action="store_true")
 
     p = sub.add_parser("recompile", help="converte um projeto RPG Maker (pasta/.zip) em um jogo HTML5 + .zip")
-    p.add_argument("path")
+    p.add_argument("path", nargs="?", type=path_arg, help="pasta ou .zip do jogo (ou arraste-o para a janela quando o terminal perguntar)")
     p.add_argument("-i", "--instruction", default="", help="pedido livre (ex.: 'traduzir para inglês e adicionar um chefe') — requer IA")
     p.add_argument("--ai", action="store_true", help="usa IA para esclarecer/planejar/portar scripts")
     p.add_argument("--translate-to", metavar="IDIOMA")
@@ -80,7 +81,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     for name, hlp in (("expand", "adiciona conteúdo/sistemas ao jogo (IA)"), ("improve", "melhorias seguras: balanceamento, UI, correções (IA)")):
         p = sub.add_parser(name, help=hlp)
-        p.add_argument("path", help="jogo recompilado (pasta/.zip) ou projeto original")
+        p.add_argument("path", type=path_arg, help="jogo recompilado (pasta/.zip) ou projeto original")
         p.add_argument("request", nargs="?" if name == "improve" else None, default="", help="o que adicionar/melhorar")
         p.add_argument("--max-features", type=int, default=6)
         p.add_argument("--review", action="store_true")
@@ -88,7 +89,7 @@ def build_parser() -> argparse.ArgumentParser:
         add_ai_args(p)
 
     p = sub.add_parser("translate", help="traduz diálogos, banco de dados e UI (IA)")
-    p.add_argument("path")
+    p.add_argument("path", nargs="?", type=path_arg, help="pasta ou .zip do jogo (ou arraste-o para a janela quando o terminal perguntar)")
     p.add_argument("--to", required=True, metavar="IDIOMA", help="idioma de destino (en, pt-BR, es, ja...)")
     p.add_argument("--from", dest="translate_from", default="", metavar="IDIOMA")
     p.add_argument("--tone", default="", help="tom/estilo a manter (ex.: 'jovial, gírias leves')")
@@ -97,19 +98,19 @@ def build_parser() -> argparse.ArgumentParser:
     add_ai_args(p)
 
     p = sub.add_parser("port", help="porta scripts Ruby (VX/VXA/XP) e plugins MV/MZ para JS (IA + regras)")
-    p.add_argument("path")
+    p.add_argument("path", nargs="?", type=path_arg, help="pasta ou .zip do jogo (ou arraste-o para a janela quando o terminal perguntar)")
     p.add_argument("--no-modules", action="store_true", help="só scripts de eventos (não gera módulos ext/)")
     add_common(p)
     add_ai_args(p)
 
     p = sub.add_parser("validate", help="revisa um jogo gerado: estrutura, assets, referências, comandos, sintaxe JS")
-    p.add_argument("path")
+    p.add_argument("path", nargs="?", type=path_arg, help="pasta ou .zip do jogo (ou arraste-o para a janela quando o terminal perguntar)")
     p.add_argument("--json", action="store_true")
     p.add_argument("--no-color", action="store_true")
     p.add_argument("--skip-syntax-check", action="store_true")
 
     p = sub.add_parser("serve", help="serve o jogo em http://localhost para jogar no navegador")
-    p.add_argument("path")
+    p.add_argument("path", nargs="?", type=path_arg, help="pasta ou .zip do jogo (ou arraste-o para a janela quando o terminal perguntar)")
     p.add_argument("--port", type=int, default=8000)
     p.add_argument("--open", action="store_true", help="abre o navegador")
 
@@ -129,10 +130,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("key", nargs="?")
     p.add_argument("value", nargs="?")
 
-    p = sub.add_parser("shell", help="terminal interativo")
-    p.add_argument("path", nargs="?")
+    p = sub.add_parser("shell", help="terminal interativo (arraste .zip/pastas/roteiros para a janela)")
+    p.add_argument("paths", nargs="*", type=path_arg, help="jogo e/ou documentos já abertos ao iniciar")
     add_ai_args(p)
     sub.add_parser("prompt", help="imprime o system prompt usado com a IA")
+    ap.commands = set(sub.choices)  # type: ignore[attr-defined]
     return ap
 
 
@@ -185,7 +187,36 @@ def report_done(res: Any) -> None:
 
 
 # ---------------------------------------------------------------------------------- comandos
+
+def need_path(args: Any) -> None:
+    """Se faltou o caminho, pergunta (arrastar e soltar): aceita .zip/pasta e, de brinde, documentos do autor."""
+    from . import dropin
+    if getattr(args, "path", None):
+        return
+    if not ui.is_interactive():
+        raise SystemExit("informe o caminho do jogo (pasta ou .zip)")
+    for _ in range(3):
+        txt = ui.ask("Arraste o .zip (ou a pasta) do jogo para esta janela e tecle Enter")
+        items, missing = dropin.classify_all(txt)
+        for m in missing:
+            ui.warn(f"não encontrei: {m}")
+        for d in items:
+            if d.kind not in ("built", "project", "docs"):
+                ui.warn(f"{d.path.name}: {d.detail}")
+        docs = [str(d.path) for d in items if d.kind == "docs"]
+        if docs and hasattr(args, "docs"):
+            args.docs = list(args.docs or []) + docs
+            ui.ok(f"{len(docs)} documento(s) anexado(s)")
+        main = dropin.pick_main(items)
+        if main:
+            args.path = str(main.path)
+            ui.ok(f"{'jogo recompilado' if main.kind == 'built' else 'projeto ' + main.engine}: {main.path}")
+            return
+    raise SystemExit("nenhum jogo informado")
+
+
 def cmd_analyze(args: Any) -> int:
+    need_path(args)
     from .analyze import analyze, print_report
     from .pipeline import load_any
     import tempfile
@@ -199,6 +230,7 @@ def cmd_analyze(args: Any) -> int:
 
 
 def cmd_recompile(args: Any) -> int:
+    need_path(args)
     from . import pipeline
     cfg = make_config(args)
     opts = pipeline_options(args)
@@ -224,6 +256,7 @@ def cmd_expand(args: Any, mode: str = "expand") -> int:
 
 
 def cmd_translate(args: Any) -> int:
+    need_path(args)
     from . import pipeline
     cfg = make_config(args)
     opts = pipeline_options(args)
@@ -235,6 +268,7 @@ def cmd_translate(args: Any) -> int:
 
 
 def cmd_port(args: Any) -> int:
+    need_path(args)
     from . import pipeline
     cfg = make_config(args)
     opts = pipeline_options(args)
@@ -246,6 +280,7 @@ def cmd_port(args: Any) -> int:
 
 
 def cmd_validate(args: Any) -> int:
+    need_path(args)
     from .build.builtgame import open_built_game
     from .pipeline import print_validation
     g = open_built_game(args.path)
@@ -276,6 +311,7 @@ def find_serve_root(path: str) -> Path:
 
 
 def cmd_serve(args: Any) -> int:
+    need_path(args)
     root = find_serve_root(args.path)
 
     class Quiet(http.server.SimpleHTTPRequestHandler):
@@ -385,7 +421,7 @@ def cmd_config(args: Any) -> int:
 def cmd_shell(args: Any) -> int:
     from .shell import Shell
     cfg = make_config(args) if args is not None else load_config()
-    Shell(cfg, getattr(args, "path", None)).run()
+    Shell(cfg, paths=list(getattr(args, "paths", None) or [])).run()
     return 0
 
 
@@ -397,6 +433,12 @@ def cmd_prompt(args: Any) -> int:
 
 def main(argv: Optional[List[str]] = None) -> int:
     ap = build_parser()
+    argv = sys.argv[1:] if argv is None else list(argv)
+    # arrastar e soltar sobre o executável/atalho: `maker-rebuild jogo.zip [roteiro.md ...]` abre o terminal já com tudo carregado
+    commands = ap.commands  # type: ignore[attr-defined]
+    if argv and not argv[0].startswith("-") and argv[0] not in commands and all(Path(clean_path(a)).exists() for a in argv):
+        return cmd_shell(argparse.Namespace(paths=[clean_path(a) for a in argv], provider=None, model=None, base_url=None,
+                                            temperature=None, max_tokens=None, num_ctx=None, no_cache=False))
     args = ap.parse_args(argv)
     if getattr(args, "no_color", False):
         ui.set_color(False)

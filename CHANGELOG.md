@@ -8,6 +8,36 @@ Categorias: **Adicionado** · **Alterado** · **Corrigido** · **Removido** · *
 
 ## [Não lançado]
 
+## [0.3.0] - 2026-11-03
+
+### Adicionado
+- **Arrastar e soltar** no terminal para continuar o processo: solte o `.zip` (ou a pasta) do jogo — e, se quiser, o roteiro/GDD — na janela e o
+  MAKER-Rebuild entende o que foi colado e mostra um **menu numerado de próximos passos**:
+  - projeto original → analisar · recompilar fielmente · recompilar com um pedido (IA) · portar scripts;
+  - jogo já recompilado → validar · jogar no navegador · expandir · melhorar · traduzir · portar.
+  - Depois de cada etapa o fluxo **continua sozinho**: o jogo recém-gerado vira o "projeto aberto" e o menu seguinte aparece.
+- Novo módulo `maker_rebuild/dropin.py`: reconhece o formato que cada terminal cola — macOS (`Meu\ Jogo.zip`), GNOME/Konsole (`'...'` e `file:///...%20...`),
+  cmd.exe (`"C:\...\Meu Jogo.zip"`), PowerShell (`& '...'`) —, vários itens de uma vez e caminhos com espaços sem aspas; `~` é expandido.
+- **Classificação sem extrair**: o conteúdo do `.zip` é inspecionado pela lista de nomes (MV, MZ, VX Ace, VX, XP, 2000/2003, jogo já recompilado,
+  zip inválido/desconhecido); pastas e documentos (`.md .txt .csv .tsv .json .yaml .html`) também.
+- **Documentos soltos** viram contexto da IA (`/docs` lista/adiciona/limpa); também podem ser soltos quando o terminal faz uma pergunta (ex.: "O que adicionar?").
+- `maker-rebuild <jogo.zip> [roteiro.md …]` (sem subcomando) abre o terminal interativo já carregado — é o que acontece ao **arrastar um arquivo sobre o executável
+  ou atalho** no Windows/macOS/Linux.
+- Nos comandos `analyze`, `recompile`, `translate`, `port`, `validate` e `serve` o caminho agora é opcional: se faltar e o terminal for interativo,
+  o CLI pede "Arraste o .zip … e tecle Enter" (em modo não interativo continua falhando com mensagem clara).
+- Todos os argumentos de caminho (`path`, `--docs`) aceitam o texto como veio do arrastar e soltar (aspas, escapes, `file://`).
+- `/open` aceita o caminho arrastado; `/help` documenta o fluxo.
+- 25 novos testes (parse por terminal, classificação de zips, fluxo do shell, atalho por argv, pergunta interativa).
+
+### Corrigido
+- Continuar o fluxo a partir de uma pasta já gerada (`dist/<jogo>`) com saída em `dist/` **apagava a própria pasta de origem** antes de copiá-la;
+  agora a saída vai para uma pasta irmã (`<jogo>-expanded`, `<jogo>-en`, …) e a origem nunca é tocada.
+- Um caminho absoluto POSIX colado no terminal (`/home/ana/jogo.zip`) não é mais confundido com um comando `/comando`.
+
+### Limitações
+- Arrastar e soltar depende do terminal colar o caminho (todos os principais fazem isso); **não há janela gráfica** de soltar arquivos.
+- Documentos em `.docx`, `.pdf` e planilhas `.xlsx` ainda não são lidos diretamente: exporte para `.txt/.md/.csv`.
+
 ## [0.2.0] - 2026-11-03
 
 ### Adicionado
@@ -64,6 +94,7 @@ Primeira versão pública (alfa).
 - XP, VX e 2000/2003 são experimentais; autotiles A1/A3/A4 sem validação com arte real; plugins MV/MZ só via `port`;
   batalha sem animações/estados/elementos; menu sem habilidades/equipamento. Detalhes no README.
 
-[Não lançado]: https://github.com/KMC1525/MAKER-Rebuild/compare/v0.2.0...HEAD
+[Não lançado]: https://github.com/KMC1525/MAKER-Rebuild/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/KMC1525/MAKER-Rebuild/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/KMC1525/MAKER-Rebuild/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/KMC1525/MAKER-Rebuild/releases/tag/v0.1.0

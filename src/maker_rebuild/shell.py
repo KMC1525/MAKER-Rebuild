@@ -4,9 +4,9 @@ from __future__ import annotations
 import shlex
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from . import __version__, ui
+from . import __version__, dropin, ui
 from .config import PROVIDERS, Config
 
 try:  # histórico de linha, quando disponível
@@ -15,8 +15,12 @@ except ImportError:  # pragma: no cover
     readline = None  # type: ignore[assignment]
 
 HELP = """\
-comandos (também aceito linguagem natural quando há IA configurada):
-  /open <caminho>          abre um projeto RPG Maker (pasta/.zip) ou jogo já recompilado
+ARRASTE E SOLTE na janela: .zip ou pasta do jogo (original ou já recompilado) e, se quiser, roteiro/GDD (.md .txt .csv .json).
+Depois de soltar, escolha o próximo passo pelo número do menu — ou escreva um pedido em linguagem natural (com IA configurada).
+
+comandos:
+  /open <caminho>          abre um projeto RPG Maker (pasta/.zip) ou jogo já recompilado (aceita o caminho colado/arrastado)
+  /docs [caminhos|clear]   documentos do autor (GDD, roteiro, fichas) usados como contexto da IA
   /analyze                 mapeia estrutura, riscos e cobertura do runtime
   /recompile [pedido]      converte para HTML/CSS/JS (+ etapas de IA se houver pedido)
   /expand <pedido>         adiciona conteúdo/sistemas (IA)
@@ -32,9 +36,15 @@ comandos (também aceito linguagem natural quando há IA configurada):
 
 
 class Shell:
-    def __init__(self, cfg: Config, path: Optional[str] = None):
+    def __init__(self, cfg: Config, path: Optional[str] = None, paths: Optional[List[str]] = None):
         self.cfg = cfg
         self.path = path
+        self.source: Optional[str] = None            # projeto original (para recompilar de novo)
+        self.kind = ""                               # project | built
+        self.engine = ""
+        self.docs: List[str] = []
+        self.menu: List[Tuple[str, Callable[[], None]]] = []
+        self.initial = list(paths or [])
         self.out = "dist"
         self.last_game: Optional[Path] = None
         self.ai = None
@@ -58,12 +68,105 @@ class Shell:
 
     def require_path(self) -> str:
         if not self.path:
-            raise RuntimeError("nenhum projeto aberto — use /open <caminho>")
+            raise RuntimeError("nenhum projeto aberto — solte o .zip/pasta aqui ou use /open <caminho>")
         return self.path
 
+    def original(self) -> str:
+        """Projeto original para (re)compilar: o que foi solto, mesmo depois de já ter gerado o jogo."""
+        return self.source or self.require_path()
+
     def opts(self, instruction: str = "", **kw: Any) -> Any:
-        from .pipeline import Options
-        return Options(out_dir=Path(self.out), instruction=instruction, interactive=True, **kw)
+        from .pipeline import Options, read_docs
+        return Options(out_dir=Path(self.out), instruction=instruction, interactive=True, extra_notes=read_docs(self.docs), **kw)
+
+    # -------------------------------------------------------------- arrastar e soltar
+    def ask_request(self, question: str) -> str:
+        """Pergunta ao usuário; se ele soltar documentos em vez de escrever, anexa-os e pergunta de novo."""
+        for _ in range(3):
+            ans = ui.ask(question, "").strip()
+            if ans and dropin.looks_like_path(ans):
+                items, _missing = dropin.classify_all(ans)
+                self._add_docs([d for d in items if d.kind == "docs"])
+                if not any(d.kind == "docs" for d in items):
+                    ui.warn("aqui eu espero o texto do pedido (documentos .md/.txt/.csv/.json são anexados como contexto)")
+                continue
+            return ans
+        return ""
+
+    def _add_docs(self, docs: List[dropin.Dropped]) -> int:
+        n = 0
+        for d in docs:
+            if str(d.path) not in self.docs:
+                self.docs.append(str(d.path))
+                n += 1
+                ui.ok(f"documento anexado: {d.path.name}")
+        return n
+
+    def drop(self, text: str) -> None:
+        """Texto colado pelo terminal (arrastar e soltar) → abre o jogo/documentos e mostra os próximos passos."""
+        items, missing = dropin.classify_all(text)
+        self.apply_drop(items, missing)
+
+    def apply_drop(self, items: List[dropin.Dropped], missing: List[Path]) -> None:
+        for m in missing:
+            ui.warn(f"não encontrei: {m}")
+        added = 0
+        for d in items:
+            if d.kind in ("built", "project"):
+                label = "jogo já recompilado" if d.kind == "built" else f"projeto original ({d.engine})"
+                ui.ok(f"{label}: {d.path}")
+            elif d.kind == "docs":
+                added += self._add_docs([d])
+            else:
+                ui.warn(f"{d.path.name}: {d.detail}")
+        mains = [d for d in items if d.kind in ("built", "project")]
+        if len(mains) > 1:
+            ui.warn(f"vários jogos soltos; vou usar o último: {mains[-1].path.name}")
+        main = dropin.pick_main(items)
+        if main:
+            self.path, self.kind, self.engine = str(main.path), main.kind, main.engine
+            self.source = str(main.path) if main.kind == "project" else None
+            self.last_game = None
+        if main or added or self.path:
+            self.show_menu()
+
+    # -------------------------------------------------------------- menu de próximos passos
+    def build_menu(self) -> List[Tuple[str, Callable[[], None]]]:
+        d = self.dispatch
+        if self.kind == "project":
+            return [
+                ("Analisar a estrutura (sem IA, não altera nada)", lambda: d("analyze", "")),
+                ("Recompilar fielmente para HTML/CSS/JS (sem IA) → .zip", lambda: d("recompile", "")),
+                ("Recompilar com um pedido (IA): traduzir, melhorar, expandir…",
+                 lambda: self._with_request("O que você quer? (ex.: traduzir para inglês e adicionar um chefe)", lambda r: d("recompile", r))),
+                ("Portar scripts Ruby / plugins para JS (IA)", lambda: d("port", "")),
+            ]
+        return [
+            ("Validar o jogo (estrutura, assets, comandos)", lambda: d("validate", "")),
+            ("Jogar no navegador (servidor local)", lambda: d("serve", "")),
+            ("Expandir: adicionar conteúdo/sistemas (IA)", lambda: self._with_request("O que adicionar?", lambda r: d("expand", r))),
+            ("Melhorar: balanceamento, UI, correções (IA)", lambda: d("improve", self.ask_request("Foco da melhoria (Enter = geral)"))),
+            ("Traduzir (IA)", lambda: self._with_request("Para qual idioma? (ex.: en, es, pt-BR)", lambda r: d("translate", r))),
+            ("Portar scripts Ruby / plugins para JS (IA)", lambda: d("port", "")),
+        ]
+
+    def _with_request(self, question: str, fn: Callable[[str], Any]) -> None:
+        req = self.ask_request(question)
+        if not req:
+            ui.warn("cancelado (nenhum pedido informado)")
+            return
+        fn(req)
+
+    def show_menu(self) -> None:
+        if not self.path:
+            ui.info("Solte (arraste) aqui o .zip ou a pasta do jogo para começar.")
+            return
+        self.menu = self.build_menu()
+        ui.heading("Próximo passo")
+        for i, (label, _fn) in enumerate(self.menu, 1):
+            print(f"  {ui.c(str(i), 'magenta', 'bold')}) {label}")
+        extra = f" · {len(self.docs)} documento(s) anexado(s)" if self.docs else ""
+        print(ui.c(f"  digite o número, um pedido em linguagem natural, ou solte mais arquivos (roteiro/GDD){extra}", "gray"))
 
     # -------------------------------------------------------------- comandos
     def dispatch(self, cmd: str, rest: str) -> bool:
@@ -76,11 +179,22 @@ class Shell:
         elif c == "status":
             self.status()
         elif c == "open":
-            p = Path(rest.strip().strip('"\'')).expanduser()
-            if not p.exists():
-                raise RuntimeError(f"caminho não encontrado: {p}")
-            self.path = str(p)
-            ui.ok(f"aberto: {p}")
+            if not rest.strip():
+                raise RuntimeError("uso: /open <caminho>  (ou apenas arraste o .zip/pasta para a janela)")
+            self.drop(rest)
+        elif c == "docs":
+            arg = rest.strip()
+            if arg.lower() == "clear":
+                self.docs.clear()
+                ui.ok("documentos removidos")
+            elif arg:
+                items, missing = dropin.classify_all(arg)
+                for m in missing:
+                    ui.warn(f"não encontrei: {m}")
+                if not self._add_docs([d for d in items if d.kind == "docs"]):
+                    ui.warn("nenhum documento válido (.md .txt .csv .json .tsv .yaml .html)")
+            else:
+                ui.kv([(f"doc {i}", p) for i, p in enumerate(self.docs, 1)] or [("docs", "(nenhum — arraste um roteiro/GDD para a janela)")])
         elif c == "out":
             self.out = rest.strip() or self.out
             ui.ok(f"saída: {self.out}")
@@ -99,16 +213,18 @@ class Shell:
         elif c == "analyze":
             from .analyze import analyze, print_report
             print_report(analyze(pipeline.load_any(self.require_path(), self.work)))
+            self.show_menu()
         elif c == "validate":
             from .build.builtgame import open_built_game
             from .build.validate import validate_game
             target = str(self.last_game) if self.last_game else self.require_path()
             pipeline.print_validation(validate_game(open_built_game(target)))
+            self.show_menu()
         elif c == "recompile":
             wants_ai = bool(rest.strip())
             o = self.opts(rest.strip())
             o.use_ai = wants_ai
-            res = pipeline.recompile(self.require_path(), o, self.cfg, self.get_ai() if wants_ai else None)
+            res = pipeline.recompile(self.original(), o, self.cfg, self.get_ai() if wants_ai else None)
             self.finish(res)
         elif c in ("expand", "improve"):
             if c == "expand" and not rest.strip():
@@ -140,6 +256,11 @@ class Shell:
         from .cli import report_done
         self.last_game = res.game_dir
         report_done(res)
+        # continua o fluxo: a partir daqui o jogo recompilado passa a ser o "projeto aberto"
+        if self.kind == "project" and not self.source:
+            self.source = self.path
+        self.path, self.kind = str(res.game_dir), "built"
+        self.show_menu()
 
     # -------------------------------------------------------------- linguagem natural
     def natural(self, text: str) -> None:
@@ -162,28 +283,55 @@ class Shell:
                 self.dispatch(action, arg)
 
     # -------------------------------------------------------------- laço
+    COMMANDS = {"quit", "exit", "q", "sair", "help", "h", "?", "ajuda", "status", "open", "docs", "out", "provider", "model",
+                "analyze", "validate", "recompile", "expand", "improve", "translate", "port", "serve"}
+    WORDS = {"help", "quit", "exit", "status", "sair", "ajuda"}
+
+    def handle(self, line: str) -> bool:
+        """Processa uma linha digitada/colada. Devolve False para sair."""
+        line = line.strip()
+        if not line:
+            return True
+        if line.startswith("/"):                       # '/comando' — mas '/home/ana/jogo.zip' é um caminho solto!
+            cmd, _, rest = line[1:].partition(" ")
+            if cmd.lower() in self.COMMANDS:
+                return self.dispatch(cmd, rest)
+        elif line.lower() in self.WORDS:
+            return self.dispatch(line.lower(), "")
+        if line.isdigit() and self.menu:
+            n = int(line)
+            if 1 <= n <= len(self.menu):
+                self.menu[n - 1][1]()
+                return True
+            raise RuntimeError(f"escolha de 1 a {len(self.menu)}")
+        if dropin.looks_like_path(line):
+            self.drop(line)
+            return True
+        self.natural(line)
+        return True
+
     def run(self) -> None:
         print(ui.banner(__version__))
-        print(ui.c("  digite /help para ver os comandos · Ctrl+D sai\n", "gray"))
-        if self.path:
-            ui.ok(f"aberto: {self.path}")
+        print(ui.c("  arraste o .zip (ou a pasta) do jogo para esta janela · /help · Ctrl+D sai\n", "gray"))
+        if self.initial:
+            try:
+                items = [dropin.classify(Path(dropin.clean_path(a))) for a in self.initial]
+                self.apply_drop([d for d in items if d.path.exists()], [d.path for d in items if not d.path.exists()])
+            except Exception as e:  # noqa: BLE001
+                ui.err(str(e))
+        elif self.path:
+            self.drop(f'"{self.path}"')
+        else:
+            ui.info("Solte aqui o .zip ou a pasta do jogo (e, se tiver, o roteiro/GDD) para começar.")
         while True:
             try:
-                line = input(ui.c("maker-rebuild", "magenta", "bold") + ui.c(" › ", "gray")).strip()
+                line = input(ui.c("maker-rebuild", "magenta", "bold") + ui.c(" › ", "gray"))
             except (EOFError, KeyboardInterrupt):
                 print()
                 break
-            if not line:
-                continue
             try:
-                if line.startswith("/") or line.split()[0].lower() in ("help", "quit", "exit", "status"):
-                    cmd, _, rest = line.lstrip("/").partition(" ")
-                    if not self.dispatch(cmd, rest):
-                        break
-                elif Path(line.strip('"\'')).expanduser().exists():
-                    self.dispatch("open", line)
-                else:
-                    self.natural(line)
+                if not self.handle(line):
+                    break
             except KeyboardInterrupt:
                 ui.err("interrompido")
             except SystemExit:

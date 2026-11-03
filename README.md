@@ -148,7 +148,7 @@ maker-rebuild expand dist/meu-jogo.zip "adicione uma dungeon de gelo com chefe, 
 maker-rebuild recompile ./MeuJogo -i "traduza para inglês e adicione um chefe secreto" --provider ollama --model qwen2.5:14b
 ```
 
-Ou abra o **terminal interativo** (rode sem argumentos):
+Ou abra o **terminal interativo** (rode sem argumentos, ou arraste o jogo sobre o executável):
 
 ```text
 $ maker-rebuild
@@ -157,6 +157,30 @@ maker-rebuild › /analyze
 maker-rebuild › /recompile
 maker-rebuild › adicione uma loja de poções na vila     ← linguagem natural, roteada pela IA
 ```
+
+### Arrastar e soltar (continue de onde parou)
+
+Você não precisa digitar caminhos. **Arraste o `.zip` (ou a pasta) do jogo para a janela do terminal** — o terminal cola o caminho e o
+MAKER-Rebuild entende o que é e mostra os próximos passos:
+
+```text
+maker-rebuild › [arraste "Meu Jogo.zip" para cá]
+✔ projeto original (mv): /home/ana/Meus Jogos/Meu Jogo.zip
+
+Próximo passo
+─────────────
+  1) Analisar a estrutura (sem IA, não altera nada)
+  2) Recompilar fielmente para HTML/CSS/JS (sem IA) → .zip
+  3) Recompilar com um pedido (IA): traduzir, melhorar, expandir…
+  4) Portar scripts Ruby / plugins para JS (IA)
+maker-rebuild › 2            ← depois, o menu do jogo pronto: validar · jogar · expandir · melhorar · traduzir
+```
+
+- Funciona com o formato de cada terminal (macOS `Meu\ Jogo.zip`, GNOME `'…'`/`file://…`, cmd `"C:\…"`, PowerShell `& '…'`), vários itens de uma vez e caminhos com espaço.
+- **Solte também o roteiro/GDD/fichas** (`.md .txt .csv .json`): eles viram contexto da IA (`/docs` lista ou limpa). Dá para soltá-los no meio de uma pergunta ("O que adicionar?").
+- Dá para soltar **um jogo já recompilado** (zip/pasta gerados antes) e continuar de lá: validar, jogar, expandir, melhorar, traduzir.
+- **Arrastar o arquivo sobre o executável/atalho** (`maker-rebuild.exe` no Windows, ou `maker-rebuild jogo.zip [roteiro.md …]` em qualquer sistema) já abre o terminal com tudo carregado.
+- Nos comandos (`analyze`, `recompile`, `translate`, `port`, `validate`, `serve`) o caminho é opcional: se faltar, o CLI pergunta "Arraste o .zip aqui…".
 
 ### Todos os comandos
 
