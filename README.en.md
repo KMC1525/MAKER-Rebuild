@@ -116,6 +116,18 @@ maker-rebuild recompile ./MyGame -i "translate to English and add a secret boss"
 maker-rebuild                                     # interactive terminal (/open, /analyze, /recompile, natural language…)
 ```
 
+### Drag & drop (continue where you left off)
+
+No need to type paths. **Drag the game's `.zip` (or folder) onto the terminal window** — the terminal pastes the path, MAKER-Rebuild recognises what it is and
+shows a numbered menu of next steps (original project → analyze / faithful rebuild / rebuild with an AI request / port scripts; already-rebuilt game → validate / play / expand / improve /
+translate / port). After each step the flow **continues**: the freshly built game becomes the open project and the next menu appears.
+
+- Understands each terminal's format (macOS `My\ Game.zip`, GNOME `'…'`/`file://…`, cmd `"C:\…"`, PowerShell `& '…'`), several items at once, and paths with spaces.
+- Drop your **script/GDD/sheets** too (`.md .txt .csv .json`): they become AI context (`/docs` lists or clears them), even in the middle of a question ("What to add?").
+- You can drop an **already-rebuilt game** and continue from there.
+- **Dragging a file onto the executable/shortcut** (or `maker-rebuild game.zip [script.md …]`) opens the terminal with everything loaded.
+- `analyze`, `recompile`, `translate`, `port`, `validate` and `serve` ask "Drag the .zip here…" when the path is omitted.
+
 | command | what it does | AI |
 |---|---|:-:|
 | `analyze` | engine, maps, events, database, assets, plugins, risks, runtime coverage (`--json`) | – |

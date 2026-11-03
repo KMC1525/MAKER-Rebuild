@@ -214,7 +214,12 @@ def prepare_built(src: str, opts: Options, cfg: Optional[Config] = None) -> Buil
     if (p.is_dir() and is_built_game(p)) or (p.is_file() and p.suffix.lower() == ".zip" and _zip_is_built(p)):
         g = open_built_game(src, work / "in")
         opts.name = opts.name or slugify(g.title)     # fixa o nome antes de traduzir o título
-        dest = copy_game(g.root, out_dir / opts.name)
+        dest_dir = out_dir / opts.name
+        if dest_dir.exists() and dest_dir.resolve() == g.root.resolve():
+            # a saída cairia em cima do próprio jogo de origem (ex.: continuar o fluxo a partir de dist/<jogo>):
+            # nunca apagar a origem — grava numa pasta irmã com o sufixo da operação
+            dest_dir = out_dir / f"{opts.name}-{opts.suffix or 'novo'}"
+        dest = copy_game(g.root, dest_dir)
         return BuiltGame(dest)
     ui.info("entrada é um projeto original: recompilando primeiro…")
     proj = open_project(src, work / "in")
